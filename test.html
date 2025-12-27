@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket Test</title>
+  </head>
+  <body>
+    <h1>Socket.IO Test</h1>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+      const socket = io("http://localhost:5000");
+
+      socket.on("connect", () => {
+        console.log("Connected:", socket.id);
+      });
+
+      socket.on("room-created", (data) => console.log("room-created", data));
+      socket.on("user-joined", (data) => console.log("user-joined", data));
+      socket.on("race-started", (data) => console.log("race-started", data));
+      socket.on("progress-update", (data) =>
+        console.log("progress-update", data)
+      );
+      socket.on("race-ended", () => console.log("race-ended"));
+      socket.on("error", (err) => console.error("error:", err));
+
+      // Expose for console use
+      window.socket = socket;
+    </script>
+  </body>
+</html>

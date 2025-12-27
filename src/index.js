@@ -15,8 +15,10 @@ const io = new Server(server, {
   },
 });
 
+// Socket.IO connection
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  // We no longer log every connection
+  // RoomHandlers will log meaningful events like room creation, join, race start, finish, disconnect
   registerRoomHandlers(io, socket);
 });
 

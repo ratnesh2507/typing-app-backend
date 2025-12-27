@@ -51,6 +51,8 @@ export function registerRoomHandlers(io, socket) {
 
     joinRoom(roomId, username);
     socket.emit("room-created", { roomId });
+
+    console.log(`[ROOM] Room ${roomId} created by ${username}`);
   });
 
   // --- Join Room ---
@@ -60,6 +62,7 @@ export function registerRoomHandlers(io, socket) {
       return;
     }
     joinRoom(roomId, username);
+    console.log(`[ROOM] ${username} joined room ${roomId}`);
   });
 
   // --- Start Race ---
@@ -74,6 +77,8 @@ export function registerRoomHandlers(io, socket) {
       text: room.text,
       startTime: room.startTime,
     });
+
+    console.log(`[RACE] Race started in room ${roomId}`);
   });
 
   // --- Typing Progress with Anti-Cheat ---
@@ -97,7 +102,7 @@ export function registerRoomHandlers(io, socket) {
       return disqualifyUser(io, roomId, socket.id, "Paste detected");
     }
 
-    // Accuracy
+    // Accuracy & correct chars
     let correctChars = 0;
     for (let i = 0; i < typedText.length; i++) {
       if (typedText[i] === originalText[i]) correctChars++;
@@ -140,13 +145,16 @@ export function registerRoomHandlers(io, socket) {
     const room = rooms[roomId];
     if (!room) return;
 
+    const username = room.users[socket.id]?.username || "Unknown";
     delete room.users[socket.id];
     delete socketToRoom[socket.id];
 
     io.to(roomId).emit("user-joined", { users: room.users });
+    console.log(`[DISCONNECT] ${username} disconnected from room ${roomId}`);
 
     if (Object.keys(room.users).length === 0) {
       delete rooms[roomId];
+      console.log(`[ROOM] Room ${roomId} deleted (empty)`);
     }
   });
 
@@ -199,6 +207,7 @@ export function registerRoomHandlers(io, socket) {
     if (allFinished) {
       room.status = "finished";
       io.to(roomId).emit("race-ended", { results: room.users });
+      console.log(`[RACE] Race finished in room ${roomId}`);
     }
   }
 
@@ -214,12 +223,15 @@ export function registerRoomHandlers(io, socket) {
     user.cheatFlags.push(reason);
 
     io.to(roomId).emit("user-disqualified", { socketId, reason });
+    console.log(
+      `[CHEAT] ${user.username} disqualified in room ${roomId}: ${reason}`
+    );
 
-    // Check if all finished after disqualification
     const allFinished = Object.values(room.users).every((u) => u.finished);
     if (allFinished) {
       room.status = "finished";
       io.to(roomId).emit("race-ended", { results: room.users });
+      console.log(`[RACE] Race finished in room ${roomId}`);
     }
   }
 }

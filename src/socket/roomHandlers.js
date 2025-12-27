@@ -37,7 +37,7 @@ rooms[roomId] = {
 */
 
 export function registerRoomHandlers(io, socket) {
-  // --- Create Room ---
+  // ---------------- CREATE ROOM ----------------
   socket.on("create-room", ({ username }) => {
     const roomId = crypto.randomUUID();
 
@@ -55,17 +55,18 @@ export function registerRoomHandlers(io, socket) {
     console.log(`[ROOM] Room ${roomId} created by ${username}`);
   });
 
-  // --- Join Room ---
+  // ---------------- JOIN ROOM ----------------
   socket.on("join-room", ({ roomId, username }) => {
     if (!rooms[roomId]) {
       socket.emit("error", "Room not found");
       return;
     }
+
     joinRoom(roomId, username);
     console.log(`[ROOM] ${username} joined room ${roomId}`);
   });
 
-  // --- Start Race ---
+  // ---------------- START RACE ----------------
   socket.on("start-race", ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || room.status !== "waiting") return;
@@ -81,13 +82,16 @@ export function registerRoomHandlers(io, socket) {
     console.log(`[RACE] Race started in room ${roomId}`);
   });
 
-  // --- Typing Progress with Anti-Cheat ---
+  // ---------------- TYPING PROGRESS ----------------
   socket.on("typing-progress", ({ roomId, typedText }) => {
     const room = rooms[roomId];
     if (!room) return;
 
     const user = room.users[socket.id];
     if (!user || user.disqualified) return;
+
+    // 🔐 HARD GUARD — prevents crashes
+    if (typeof typedText !== "string") return;
 
     const now = Date.now();
     const originalText = room.text;
@@ -96,15 +100,15 @@ export function registerRoomHandlers(io, socket) {
       user.lastUpdateTime = now;
     }
 
-    // 🛑 Paste Detection
+    // 🛑 Paste detection
     const charJump = typedText.length - user.lastTypedLength;
     if (charJump > MAX_CHAR_JUMP) {
       return disqualifyUser(io, roomId, socket.id, "Paste detected");
     }
 
-    // Accuracy & correct chars
+    // Count correct chars
     let correctChars = 0;
-    for (let i = 0; i < typedText.length; i++) {
+    for (let i = 0; i < typedText.length && i < originalText.length; i++) {
       if (typedText[i] === originalText[i]) correctChars++;
     }
 
@@ -117,7 +121,7 @@ export function registerRoomHandlers(io, socket) {
     user.lastTypedLength = typedText.length;
     user.lastUpdateTime = now;
 
-    // 🛑 Speed Hack Detection
+    // 🛑 Speed hack detection
     const wpm = calculateWPM(user.charsTyped, room.startTime, now);
     if (wpm > MAX_WPM) {
       return disqualifyUser(io, roomId, socket.id, "WPM limit exceeded");
@@ -128,7 +132,7 @@ export function registerRoomHandlers(io, socket) {
       progress: user.progress,
     });
 
-    // Auto-finish
+    // Auto finish
     if (typedText.length >= originalText.length) {
       if (now - room.startTime < MIN_RACE_TIME_MS) {
         return disqualifyUser(io, roomId, socket.id, "Finished too fast");
@@ -137,7 +141,7 @@ export function registerRoomHandlers(io, socket) {
     }
   });
 
-  // --- Disconnect ---
+  // ---------------- DISCONNECT ----------------
   socket.on("disconnect", () => {
     const roomId = socketToRoom[socket.id];
     if (!roomId) return;
@@ -146,11 +150,13 @@ export function registerRoomHandlers(io, socket) {
     if (!room) return;
 
     const username = room.users[socket.id]?.username || "Unknown";
+
     delete room.users[socket.id];
     delete socketToRoom[socket.id];
 
     io.to(roomId).emit("user-joined", { users: room.users });
-    console.log(`[DISCONNECT] ${username} disconnected from room ${roomId}`);
+
+    console.log(`[DISCONNECT] ${username} left room ${roomId}`);
 
     if (Object.keys(room.users).length === 0) {
       delete rooms[roomId];
@@ -158,7 +164,7 @@ export function registerRoomHandlers(io, socket) {
     }
   });
 
-  // --- Helper Functions ---
+  // ---------------- HELPERS ----------------
   function joinRoom(roomId, username) {
     socket.join(roomId);
     socketToRoom[socket.id] = roomId;
@@ -223,6 +229,7 @@ export function registerRoomHandlers(io, socket) {
     user.cheatFlags.push(reason);
 
     io.to(roomId).emit("user-disqualified", { socketId, reason });
+
     console.log(
       `[CHEAT] ${user.username} disqualified in room ${roomId}: ${reason}`
     );

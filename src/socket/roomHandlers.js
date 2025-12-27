@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { calculateWPM } from "../utils/wpm.js";
 import { calculateAccuracy } from "../utils/accuracy.js";
 
@@ -39,7 +38,10 @@ rooms[roomId] = {
 export function registerRoomHandlers(io, socket) {
   // ---------------- CREATE ROOM ----------------
   socket.on("create-room", ({ username }) => {
-    const roomId = crypto.randomUUID();
+    let roomId;
+    do {
+      roomId = generateShortRoomId(8); // 8-character room ID
+    } while (rooms[roomId]); // ensure uniqueness
 
     rooms[roomId] = {
       roomId,
@@ -96,20 +98,18 @@ export function registerRoomHandlers(io, socket) {
     const now = Date.now();
     const originalText = room.text;
 
-    if (user.lastUpdateTime === null) {
-      user.lastUpdateTime = now;
-    }
+    if (user.lastUpdateTime === null) user.lastUpdateTime = now;
 
-    // 🛑 Paste detection
+    // Paste detection
     const charJump = typedText.length - user.lastTypedLength;
-    if (charJump > MAX_CHAR_JUMP) {
+    if (charJump > MAX_CHAR_JUMP)
       return disqualifyUser(io, roomId, socket.id, "Paste detected");
-    }
 
     // Count correct chars
     let correctChars = 0;
     for (let i = 0; i < typedText.length && i < originalText.length; i++) {
       if (typedText[i] === originalText[i]) correctChars++;
+      else break; // optional: stop at first mistake
     }
 
     user.charsTyped = typedText.length;
@@ -121,11 +121,10 @@ export function registerRoomHandlers(io, socket) {
     user.lastTypedLength = typedText.length;
     user.lastUpdateTime = now;
 
-    // 🛑 Speed hack detection
+    // WPM detection
     const wpm = calculateWPM(user.charsTyped, room.startTime, now);
-    if (wpm > MAX_WPM) {
+    if (wpm > MAX_WPM)
       return disqualifyUser(io, roomId, socket.id, "WPM limit exceeded");
-    }
 
     io.to(roomId).emit("progress-update", {
       socketId: socket.id,
@@ -134,9 +133,9 @@ export function registerRoomHandlers(io, socket) {
 
     // Auto finish
     if (typedText.length >= originalText.length) {
-      if (now - room.startTime < MIN_RACE_TIME_MS) {
+      if (now - room.startTime < MIN_RACE_TIME_MS)
         return disqualifyUser(io, roomId, socket.id, "Finished too fast");
-      }
+
       finishRace(roomId, socket.id);
     }
   });
@@ -186,11 +185,7 @@ export function registerRoomHandlers(io, socket) {
 
     // ✅ Send full users list to joining socket
     socket.emit("join-confirmed", { users: rooms[roomId].users });
-
-    // Notify everyone else
-    socket.to(roomId).emit("user-joined", {
-      users: rooms[roomId].users,
-    });
+    socket.to(roomId).emit("user-joined", { users: rooms[roomId].users });
   }
 
   function finishRace(roomId, socketId) {
@@ -207,10 +202,7 @@ export function registerRoomHandlers(io, socket) {
 
     io.to(roomId).emit("user-finished", {
       socketId,
-      stats: {
-        wpm: user.wpm,
-        accuracy: user.accuracy,
-      },
+      stats: { wpm: user.wpm, accuracy: user.accuracy },
     });
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
@@ -245,6 +237,17 @@ export function registerRoomHandlers(io, socket) {
       console.log(`[RACE] Race finished in room ${roomId}`);
     }
   }
+}
+
+// --------------------- HELPERS ---------------------
+function generateShortRoomId(length = 8) {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
 
 function getSampleText() {

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 
 const rooms = {};
+const socketToRoom = {};
 
 /*
 Room structure:
@@ -62,7 +63,7 @@ export function registerRoomHandlers(io, socket) {
   // Typing Progress
   socket.on("typing-progress", ({ roomId, progress }) => {
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room || !room.users[socket.id]) return;
 
     room.users[socket.id].progress = progress;
 
@@ -75,7 +76,9 @@ export function registerRoomHandlers(io, socket) {
   // Finish Race
   socket.on("finish-race", ({ roomId }) => {
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room || !room.users[socket.id]) return;
+
+    if (room.users[socket.id].finished) return;
 
     room.users[socket.id].finished = true;
 
@@ -87,9 +90,47 @@ export function registerRoomHandlers(io, socket) {
     }
   });
 
+  // Handle Disconnect
+  socket.on("disconnect", () => {
+    const roomId = socketToRoom[socket.id];
+    if (!roomId) return;
+
+    const room = rooms[roomId];
+    if (!room) return;
+
+    console.log(`User ${socket.id} disconnected from room ${roomId}`);
+
+    // Remove user from room
+    delete room.users[socket.id];
+    delete socketToRoom[socket.id];
+
+    // Notify remaining users
+    io.to(roomId).emit("user-joined", {
+      users: room.users,
+    });
+
+    // If room empty → delete it
+    if (Object.keys(room.users).length === 0) {
+      delete rooms[roomId];
+      console.log(`Room ${roomId} deleted`);
+      return;
+    }
+
+    // If race running, check if remaining users all finished
+    if (room.status === "running") {
+      const allFinished = Object.values(room.users).every((u) => u.finished);
+
+      if (allFinished) {
+        room.status = "finished";
+        io.to(roomId).emit("race-ended");
+      }
+    }
+  });
+
   // Helper
   function joinRoom(roomId, username) {
     socket.join(roomId);
+    socketToRoom[socket.id] = roomId;
 
     rooms[roomId].users[socket.id] = {
       username,

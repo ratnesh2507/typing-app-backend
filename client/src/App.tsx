@@ -1,19 +1,16 @@
 import { useEffect, useState } from "react";
 import { socket } from "./socket";
 
-/* ================= TYPES ================= */
-
 type User = {
   username: string;
   progress: number;
   finished: boolean;
   wpm?: number;
   accuracy?: number;
+  disqualified?: boolean;
 };
 
 type UsersMap = Record<string, User>;
-
-/* ================= APP ================= */
 
 export default function App() {
   const [username, setUsername] = useState<string>("");
@@ -77,6 +74,23 @@ export default function App() {
       }
     );
 
+    socket.on(
+      "user-disqualified",
+      ({ socketId, reason }: { socketId: string; reason: string }) => {
+        alert(
+          `${users[socketId]?.username || socketId} disqualified: ${reason}`
+        );
+        setUsers((prev) => ({
+          ...prev,
+          [socketId]: {
+            ...prev[socketId],
+            disqualified: true,
+            finished: true,
+          },
+        }));
+      }
+    );
+
     socket.on("race-ended", ({ results }: { results: UsersMap }) => {
       setUsers(results);
       setRaceFinished(true);
@@ -86,11 +100,14 @@ export default function App() {
     return () => {
       socket.off();
     };
-  }, []);
+  }, [users]);
+
+  const isDisabled = (socketId?: string) =>
+    raceFinished || (socketId && users[socketId]?.disqualified);
 
   return (
     <div style={{ padding: 20, maxWidth: 720 }}>
-      <h2>Typing Speed Battle — Test Client (TS)</h2>
+      <h2>Typing Speed Battle — Test Client (TS + Anti-Cheat)</h2>
 
       <p>Status: {connected ? "🟢 Connected" : "🔴 Disconnected"}</p>
 
@@ -98,12 +115,16 @@ export default function App() {
         placeholder="Username"
         value={username}
         onChange={(e) => setUsername(e.target.value)}
+        disabled={raceFinished}
       />
 
       <br />
       <br />
 
-      <button onClick={() => socket.emit("create-room", { username })}>
+      <button
+        onClick={() => socket.emit("create-room", { username })}
+        disabled={raceFinished}
+      >
         Create Room
       </button>
 
@@ -114,16 +135,23 @@ export default function App() {
         placeholder="Room ID"
         value={roomId}
         onChange={(e) => setRoomId(e.target.value)}
+        disabled={raceFinished}
       />
 
-      <button onClick={() => socket.emit("join-room", { roomId, username })}>
+      <button
+        onClick={() => socket.emit("join-room", { roomId, username })}
+        disabled={raceFinished}
+      >
         Join Room
       </button>
 
       <br />
       <br />
 
-      <button onClick={() => socket.emit("start-race", { roomId })}>
+      <button
+        onClick={() => socket.emit("start-race", { roomId })}
+        disabled={raceFinished}
+      >
         Start Race
       </button>
 
@@ -161,11 +189,14 @@ export default function App() {
       {Object.entries(users).map(([id, user]) => (
         <div key={id} style={{ marginBottom: 8 }}>
           <strong>{user.username}</strong> — {user.progress ?? 0}%
-          {user.finished && (
+          {user.finished && !user.disqualified && (
             <>
               {" "}
               | 🏁 WPM: {user.wpm} | 🎯 Accuracy: {user.accuracy}%
             </>
+          )}
+          {user.disqualified && (
+            <span style={{ color: "red" }}> | ❌ Disqualified</span>
           )}
         </div>
       ))}

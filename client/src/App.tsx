@@ -1,13 +1,28 @@
 import { useEffect, useState } from "react";
 import { socket } from "./socket";
 
-function App() {
-  const [username, setUsername] = useState("");
-  const [roomId, setRoomId] = useState("");
-  const [users, setUsers] = useState<any>({});
-  const [text, setText] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [connected, setConnected] = useState(false);
+/* ================= TYPES ================= */
+
+type User = {
+  username: string;
+  progress: number;
+  finished: boolean;
+  wpm?: number;
+  accuracy?: number;
+};
+
+type UsersMap = Record<string, User>;
+
+/* ================= APP ================= */
+
+export default function App() {
+  const [username, setUsername] = useState<string>("");
+  const [roomId, setRoomId] = useState<string>("");
+  const [users, setUsers] = useState<UsersMap>({});
+  const [text, setText] = useState<string>("");
+  const [typedText, setTypedText] = useState<string>("");
+  const [connected, setConnected] = useState<boolean>(false);
+  const [raceFinished, setRaceFinished] = useState<boolean>(false);
 
   useEffect(() => {
     socket.on("connect", () => {
@@ -15,30 +30,56 @@ function App() {
       console.log("Connected:", socket.id);
     });
 
-    socket.on("room-created", ({ roomId }) => {
+    socket.on("room-created", ({ roomId }: { roomId: string }) => {
       setRoomId(roomId);
     });
 
-    socket.on("user-joined", ({ users }) => {
+    socket.on("user-joined", ({ users }: { users: UsersMap }) => {
       setUsers(users);
     });
 
-    socket.on("race-started", ({ text }) => {
+    socket.on("race-started", ({ text }: { text: string }) => {
       setText(text);
-      setProgress(0);
+      setTypedText("");
+      setRaceFinished(false);
     });
 
-    socket.on("progress-update", ({ socketId, progress }) => {
-      setUsers((prev: any) => ({
-        ...prev,
-        [socketId]: {
-          ...prev[socketId],
-          progress,
-        },
-      }));
-    });
+    socket.on(
+      "progress-update",
+      ({ socketId, progress }: { socketId: string; progress: number }) => {
+        setUsers((prev) => ({
+          ...prev,
+          [socketId]: {
+            ...prev[socketId],
+            progress,
+          },
+        }));
+      }
+    );
 
-    socket.on("race-ended", () => {
+    socket.on(
+      "user-finished",
+      ({
+        socketId,
+        stats,
+      }: {
+        socketId: string;
+        stats: { wpm: number; accuracy: number };
+      }) => {
+        setUsers((prev) => ({
+          ...prev,
+          [socketId]: {
+            ...prev[socketId],
+            ...stats,
+            finished: true,
+          },
+        }));
+      }
+    );
+
+    socket.on("race-ended", ({ results }: { results: UsersMap }) => {
+      setUsers(results);
+      setRaceFinished(true);
       alert("Race Finished!");
     });
 
@@ -48,8 +89,8 @@ function App() {
   }, []);
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Socket.IO Test Client</h2>
+    <div style={{ padding: 20, maxWidth: 720 }}>
+      <h2>Typing Speed Battle — Test Client (TS)</h2>
 
       <p>Status: {connected ? "🟢 Connected" : "🔴 Disconnected"}</p>
 
@@ -90,43 +131,44 @@ function App() {
       <br />
 
       {text && (
-        <p>
-          <strong>Text:</strong> {text}
-        </p>
+        <>
+          <p>
+            <strong>Text to type:</strong>
+          </p>
+          <p style={{ background: "#eee", padding: 10 }}>{text}</p>
+
+          <textarea
+            rows={4}
+            style={{ width: "100%" }}
+            value={typedText}
+            disabled={raceFinished}
+            onChange={(e) => {
+              const value = e.target.value;
+              setTypedText(value);
+
+              socket.emit("typing-progress", {
+                roomId,
+                typedText: value,
+              });
+            }}
+          />
+        </>
       )}
-
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={progress}
-        onChange={(e) => {
-          const value = Number(e.target.value);
-          setProgress(value);
-
-          socket.emit("typing-progress", {
-            roomId,
-            progress: value,
-          });
-
-          if (value === 100) {
-            socket.emit("finish-race", { roomId });
-          }
-        }}
-      />
-
-      <p>Your Progress: {progress}%</p>
 
       <hr />
 
       <h3>Players</h3>
-      {Object.entries(users).map(([id, user]: any) => (
-        <div key={id}>
-          {user.username}: {user.progress}%
+      {Object.entries(users).map(([id, user]) => (
+        <div key={id} style={{ marginBottom: 8 }}>
+          <strong>{user.username}</strong> — {user.progress ?? 0}%
+          {user.finished && (
+            <>
+              {" "}
+              | 🏁 WPM: {user.wpm} | 🎯 Accuracy: {user.accuracy}%
+            </>
+          )}
         </div>
       ))}
     </div>
   );
 }
-
-export default App;

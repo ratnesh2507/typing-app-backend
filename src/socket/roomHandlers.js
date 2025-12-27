@@ -1,27 +1,11 @@
 import crypto from "crypto";
+import { calculateWPM } from "../utils/wpm.js";
+import { calculateAccuracy } from "../utils/accuracy.js";
 
 const rooms = {};
 const socketToRoom = {};
 
-/*
-Room structure:
-rooms[roomId] = {
-  roomId,
-  text,
-  users: {
-    socketId: {
-      username,
-      progress,
-      finished
-    }
-  },
-  status: "waiting" | "running" | "finished",
-  startTime
-}
-*/
-
 export function registerRoomHandlers(io, socket) {
-  // Create Room
   socket.on("create-room", ({ username }) => {
     const roomId = crypto.randomUUID();
 
@@ -37,7 +21,6 @@ export function registerRoomHandlers(io, socket) {
     socket.emit("room-created", { roomId });
   });
 
-  // Join Room
   socket.on("join-room", ({ roomId, username }) => {
     if (!rooms[roomId]) {
       socket.emit("error", "Room not found");
@@ -46,7 +29,6 @@ export function registerRoomHandlers(io, socket) {
     joinRoom(roomId, username);
   });
 
-  // Start Race
   socket.on("start-race", ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || room.status !== "waiting") return;
@@ -60,37 +42,46 @@ export function registerRoomHandlers(io, socket) {
     });
   });
 
-  // Typing Progress
-  socket.on("typing-progress", ({ roomId, progress }) => {
+  /**
+   * Typing update
+   * payload = {
+   *   roomId,
+   *   typedText
+   * }
+   */
+  socket.on("typing-progress", ({ roomId, typedText }) => {
     const room = rooms[roomId];
     if (!room || !room.users[socket.id]) return;
 
+    const originalText = room.text;
+
+    let correctChars = 0;
+    for (let i = 0; i < typedText.length; i++) {
+      if (typedText[i] === originalText[i]) {
+        correctChars++;
+      }
+    }
+
+    const progress = Math.min(
+      Math.round((typedText.length / originalText.length) * 100),
+      100
+    );
+
+    room.users[socket.id].charsTyped = typedText.length;
+    room.users[socket.id].correctChars = correctChars;
     room.users[socket.id].progress = progress;
 
     io.to(roomId).emit("progress-update", {
       socketId: socket.id,
       progress,
     });
-  });
 
-  // Finish Race
-  socket.on("finish-race", ({ roomId }) => {
-    const room = rooms[roomId];
-    if (!room || !room.users[socket.id]) return;
-
-    if (room.users[socket.id].finished) return;
-
-    room.users[socket.id].finished = true;
-
-    const allFinished = Object.values(room.users).every((u) => u.finished);
-
-    if (allFinished) {
-      room.status = "finished";
-      io.to(roomId).emit("race-ended");
+    // Auto-finish when text completed
+    if (typedText.length >= originalText.length) {
+      finishRace(roomId);
     }
   });
 
-  // Handle Disconnect
   socket.on("disconnect", () => {
     const roomId = socketToRoom[socket.id];
     if (!roomId) return;
@@ -98,36 +89,51 @@ export function registerRoomHandlers(io, socket) {
     const room = rooms[roomId];
     if (!room) return;
 
-    console.log(`User ${socket.id} disconnected from room ${roomId}`);
-
-    // Remove user from room
     delete room.users[socket.id];
     delete socketToRoom[socket.id];
 
-    // Notify remaining users
     io.to(roomId).emit("user-joined", {
       users: room.users,
     });
 
-    // If room empty → delete it
     if (Object.keys(room.users).length === 0) {
       delete rooms[roomId];
-      console.log(`Room ${roomId} deleted`);
       return;
-    }
-
-    // If race running, check if remaining users all finished
-    if (room.status === "running") {
-      const allFinished = Object.values(room.users).every((u) => u.finished);
-
-      if (allFinished) {
-        room.status = "finished";
-        io.to(roomId).emit("race-ended");
-      }
     }
   });
 
-  // Helper
+  function finishRace(roomId) {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    const user = room.users[socket.id];
+    if (!user || user.finished) return;
+
+    user.finished = true;
+    user.finishTime = Date.now();
+
+    user.wpm = calculateWPM(user.charsTyped, room.startTime, user.finishTime);
+
+    user.accuracy = calculateAccuracy(user.correctChars, user.charsTyped);
+
+    io.to(roomId).emit("user-finished", {
+      socketId: socket.id,
+      stats: {
+        wpm: user.wpm,
+        accuracy: user.accuracy,
+      },
+    });
+
+    const allFinished = Object.values(room.users).every((u) => u.finished);
+
+    if (allFinished) {
+      room.status = "finished";
+      io.to(roomId).emit("race-ended", {
+        results: room.users,
+      });
+    }
+  }
+
   function joinRoom(roomId, username) {
     socket.join(roomId);
     socketToRoom[socket.id] = roomId;
@@ -136,6 +142,11 @@ export function registerRoomHandlers(io, socket) {
       username,
       progress: 0,
       finished: false,
+      charsTyped: 0,
+      correctChars: 0,
+      wpm: 0,
+      accuracy: 0,
+      finishTime: null,
     };
 
     io.to(roomId).emit("user-joined", {
@@ -144,7 +155,6 @@ export function registerRoomHandlers(io, socket) {
   }
 }
 
-// Sample Text Generator
 function getSampleText() {
   return "The quick brown fox jumps over the lazy dog.";
 }

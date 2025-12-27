@@ -184,6 +184,9 @@ export function registerRoomHandlers(io, socket) {
       disqualified: false,
     };
 
+    // ✅ PRIVATE CONFIRMATION FOR DASHBOARD
+    socket.emit("join-confirmed", { roomId });
+
     io.to(roomId).emit("user-joined", {
       users: rooms[roomId].users,
     });

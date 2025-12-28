@@ -139,14 +139,24 @@ export function registerRoomHandlers(io, socket) {
     user.lastTypedLength = typedText.length;
     user.lastUpdateTime = now;
 
-    // WPM detection
+    // Calculate live stats
     const wpm = calculateWPM(user.charsTyped, room.startTime, now);
+    const accuracy = calculateAccuracy(user.correctChars, user.charsTyped);
+
+    // Anti-cheat
     if (wpm > MAX_WPM)
       return disqualifyUser(io, roomId, socket.id, "WPM limit exceeded");
 
+    // Store stats
+    user.wpm = wpm;
+    user.accuracy = accuracy;
+
+    // Emit EVERYTHING needed by PlayerCard
     io.to(roomId).emit("progress-update", {
       socketId: socket.id,
       progress: user.progress,
+      wpm: user.wpm,
+      accuracy: user.accuracy,
     });
 
     // Auto finish

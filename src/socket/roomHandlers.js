@@ -68,6 +68,24 @@ export function registerRoomHandlers(io, socket) {
     console.log(`[ROOM] ${username} joined room ${roomId}`);
   });
 
+  // ---------------- SYNC RACE STATE (for reloads) ----------------
+  socket.on("sync-race-state", ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    socket.emit("race-state", {
+      status: room.status,
+      startTime: room.startTime,
+      text: room.text,
+      users: room.users,
+    });
+
+    // If race already finished, immediately send results
+    if (room.status === "finished") {
+      socket.emit("race-ended", { results: room.users });
+    }
+  });
+
   // ---------------- START RACE ----------------
   socket.on("start-race", ({ roomId }) => {
     const room = rooms[roomId];

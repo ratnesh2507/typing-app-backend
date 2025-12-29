@@ -1,5 +1,6 @@
 import { calculateWPM } from "../utils/wpm.js";
 import { calculateAccuracy } from "../utils/accuracy.js";
+import { sampleTexts } from "../utils/texts.js";
 
 const rooms = {};
 const socketToRoom = {};
@@ -279,5 +280,6 @@ function generateShortRoomId(length = 8) {
 }
 
 function getSampleText() {
-  return "The quick brown fox jumps over the lazy dog.";
+  const randomIndex = Math.floor(Math.random() * sampleTexts.length);
+  return sampleTexts[randomIndex];
 }

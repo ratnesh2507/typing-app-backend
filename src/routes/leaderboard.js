@@ -70,6 +70,26 @@ router.get("/global-avg", async (req, res) => {
   }
 });
 
+// All races (for dashboards, history, analytics)
+router.get("admin/race/all", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 100;
+    const [from, to] = getRange(page, limit);
+
+    const { data, error } = await supabase
+      .from("leaderboard_per_race")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Per-race leaderboard
 router.get("/race/:raceId", async (req, res) => {
   const { raceId } = req.params;

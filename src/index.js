@@ -5,6 +5,7 @@ import cors from "cors";
 import { config } from "dotenv";
 import { registerRoomHandlers } from "./socket/roomHandlers.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
+import userRoutes from "./routes/users.js";
 
 config();
 const app = express();
@@ -15,6 +16,9 @@ app.get("/", (req, res) => res.send("Typing Race backend is running 🚀"));
 
 // Mount leaderboard routes
 app.use("/leaderboard", leaderboardRoutes);
+
+// Mount user routes
+app.use("/users", userRoutes);
 
 const server = http.createServer(app);
 

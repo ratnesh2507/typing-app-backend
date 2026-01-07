@@ -1,6 +1,7 @@
 import { calculateWPM } from "../utils/wpm.js";
 import { calculateAccuracy } from "../utils/accuracy.js";
 import { sampleTexts } from "../utils/texts.js";
+import { supabase } from "../lib/supabaseClient.js";
 
 const rooms = {};
 const socketToRoom = {};
@@ -50,6 +51,7 @@ export function registerRoomHandlers(io, socket) {
       users: {},
       status: "waiting",
       startTime: null,
+      dbRaceId: null,
     };
 
     joinRoom(roomId, username);
@@ -88,12 +90,30 @@ export function registerRoomHandlers(io, socket) {
   });
 
   // ---------------- START RACE ----------------
-  socket.on("start-race", ({ roomId }) => {
+  socket.on("start-race", async ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || room.status !== "waiting") return;
 
     room.status = "running";
     room.startTime = Date.now();
+
+    // 🗄️ Create race in DB
+    const { data, error } = await supabase
+      .from("races")
+      .insert({
+        text: room.text,
+        started_at: new Date(room.startTime),
+        room_id: roomId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[DB] Failed to create race", error);
+      // Game still continues even if DB fails
+    } else {
+      room.dbRaceId = data.id;
+    }
 
     io.to(roomId).emit("race-started", {
       text: room.text,
@@ -217,7 +237,7 @@ export function registerRoomHandlers(io, socket) {
     socket.to(roomId).emit("user-joined", { users: rooms[roomId].users });
   }
 
-  function finishRace(roomId, socketId) {
+  async function finishRace(roomId, socketId) {
     const room = rooms[roomId];
     if (!room) return;
 
@@ -235,14 +255,19 @@ export function registerRoomHandlers(io, socket) {
     });
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
+
     if (allFinished) {
       room.status = "finished";
+
+      // 🗄️ Persist race results
+      await persistRaceResults(room);
+
       io.to(roomId).emit("race-ended", { results: room.users });
       console.log(`[RACE] Race finished in room ${roomId}`);
     }
   }
 
-  function disqualifyUser(io, roomId, socketId, reason) {
+  async function disqualifyUser(io, roomId, socketId, reason) {
     const room = rooms[roomId];
     if (!room) return;
 
@@ -260,8 +285,13 @@ export function registerRoomHandlers(io, socket) {
     );
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
+
     if (allFinished) {
       room.status = "finished";
+
+      // 🗄️ Persist race results
+      await persistRaceResults(room);
+
       io.to(roomId).emit("race-ended", { results: room.users });
       console.log(`[RACE] Race finished in room ${roomId}`);
     }
@@ -282,4 +312,32 @@ function generateShortRoomId(length = 8) {
 function getSampleText() {
   const randomIndex = Math.floor(Math.random() * sampleTexts.length);
   return sampleTexts[randomIndex];
+}
+
+// DB Persistence
+async function persistRaceResults(room) {
+  if (!room.dbRaceId) return;
+
+  const participants = Object.entries(room.users).map(([socketId, user]) => ({
+    race_id: room.dbRaceId,
+    user_id: user.username, // TEMP (we’ll map Clerk IDs later)
+    wpm: user.wpm,
+    accuracy: user.accuracy,
+    chars_typed: user.charsTyped,
+    correct_chars: user.correctChars,
+    finished: user.finished,
+    finish_time: user.finishTime ? new Date(user.finishTime) : null,
+    disqualified: user.disqualified,
+    cheat_flags: user.cheatFlags,
+  }));
+
+  const { error } = await supabase
+    .from("race_participants")
+    .insert(participants);
+
+  if (error) {
+    console.error("[DB] Failed to store race results", error);
+  } else {
+    console.log("[DB] Race results saved");
+  }
 }

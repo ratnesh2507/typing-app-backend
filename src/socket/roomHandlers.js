@@ -277,15 +277,37 @@ export function registerRoomHandlers(io, socket) {
 
     const finishedAt = new Date();
 
-    // 🧠 Mark unfinished users as DNF
+    // 🧠 Finalize users
     for (const user of Object.values(room.users)) {
-      if (!user.finished) {
+      // Already finished via normal completion
+      if (user.finished && !user.disqualified) {
+        // finishTime already set in finishRace
+        continue;
+      }
+
+      // Already disqualified (cheat, paste, etc.)
+      if (user.disqualified) {
         user.finished = true;
+        user.finishTime = null;
+        continue;
+      }
+
+      // User did NOT finish typing
+      user.finished = true;
+
+      // ❌ True DNF: never typed or no valid speed
+      if (user.charsTyped === 0 || user.wpm === 0) {
         user.disqualified = true;
         user.cheatFlags.push("DNF");
         user.finishTime = null;
         user.wpm = 0;
         user.accuracy = 0;
+      }
+      // ✅ Slow typer: typed but didn’t finish
+      else {
+        user.disqualified = false;
+        user.finishTime = finishedAt; // store race end time
+        // keep wpm, accuracy, charsTyped
       }
     }
 

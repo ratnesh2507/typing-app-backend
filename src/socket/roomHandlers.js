@@ -269,15 +269,15 @@ export function registerRoomHandlers(io, socket) {
 
     room.status = "finished";
 
-    // ⛔ Clear timeout
+    // ⏱️ Clear timeout
     if (room.endTimeout) {
       clearTimeout(room.endTimeout);
       room.endTimeout = null;
     }
 
-    const now = Date.now();
+    const finishedAt = new Date();
 
-    // 🧠 Finalize all users
+    // 🧠 Mark unfinished users as DNF
     for (const user of Object.values(room.users)) {
       if (!user.finished) {
         user.finished = true;
@@ -289,7 +289,19 @@ export function registerRoomHandlers(io, socket) {
       }
     }
 
-    // 🗄️ Persist once
+    // 🗄️ Update race end time FIRST
+    if (room.dbRaceId) {
+      const { error } = await supabase
+        .from("races")
+        .update({ finished_at: finishedAt })
+        .eq("id", room.dbRaceId);
+
+      if (error) {
+        console.error("[DB] Failed to update finished_at", error);
+      }
+    }
+
+    // 🗄️ Persist participants
     await persistRaceResults(room);
 
     io.to(room.roomId).emit("race-ended", {

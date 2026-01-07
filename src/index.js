@@ -2,17 +2,19 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import { registerRoomHandlers } from "./socket/roomHandlers.js";
 import { config } from "dotenv";
+import { registerRoomHandlers } from "./socket/roomHandlers.js";
+import leaderboardRoutes from "./routes/leaderboard.js";
 
 config();
 const app = express();
 app.use(cors());
 
 // Health check
-app.get("/", (req, res) => {
-  res.send("Typing Race backend is running 🚀");
-});
+app.get("/", (req, res) => res.send("Typing Race backend is running 🚀"));
+
+// Mount leaderboard routes
+app.use("/leaderboard", leaderboardRoutes);
 
 const server = http.createServer(app);
 

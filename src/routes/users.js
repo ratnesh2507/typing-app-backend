@@ -11,7 +11,7 @@ router.get("/:userId/races", async (req, res) => {
       .from("leaderboard_per_race")
       .select("*")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false });
+      .order("finish_time", { ascending: false });
 
     if (error) throw error;
     res.json(data);

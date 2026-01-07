@@ -10,6 +10,7 @@ const socketToRoom = {};
 const MAX_WPM = 220;
 const MIN_RACE_TIME_MS = 3000;
 const MAX_CHAR_JUMP = 10;
+const MAX_RACE_DURATION_MS = 60_000; // 60 seconds
 
 /*
 Room structure:
@@ -52,6 +53,7 @@ export function registerRoomHandlers(io, socket) {
       status: "waiting",
       startTime: null,
       dbRaceId: null,
+      endTimeout: null,
     };
 
     joinRoom(roomId, username);
@@ -108,12 +110,14 @@ export function registerRoomHandlers(io, socket) {
       .select()
       .single();
 
-    if (error) {
-      console.error("[DB] Failed to create race", error);
-      // Game still continues even if DB fails
-    } else {
+    if (!error) {
       room.dbRaceId = data.id;
     }
+
+    // ⏱️ HARD STOP — race timeout
+    room.endTimeout = setTimeout(() => {
+      endRace(room, io, "timeout");
+    }, MAX_RACE_DURATION_MS);
 
     io.to(roomId).emit("race-started", {
       text: room.text,
@@ -237,7 +241,7 @@ export function registerRoomHandlers(io, socket) {
     socket.to(roomId).emit("user-joined", { users: rooms[roomId].users });
   }
 
-  async function finishRace(roomId, socketId) {
+  function finishRace(roomId, socketId) {
     const room = rooms[roomId];
     if (!room) return;
 
@@ -255,19 +259,48 @@ export function registerRoomHandlers(io, socket) {
     });
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
-
     if (allFinished) {
-      room.status = "finished";
-
-      // 🗄️ Persist race results
-      await persistRaceResults(room);
-
-      io.to(roomId).emit("race-ended", { results: room.users });
-      console.log(`[RACE] Race finished in room ${roomId}`);
+      endRace(room, io, "all_finished");
     }
   }
 
-  async function disqualifyUser(io, roomId, socketId, reason) {
+  async function endRace(room, io, reason = "completed") {
+    if (room.status === "finished") return;
+
+    room.status = "finished";
+
+    // ⛔ Clear timeout
+    if (room.endTimeout) {
+      clearTimeout(room.endTimeout);
+      room.endTimeout = null;
+    }
+
+    const now = Date.now();
+
+    // 🧠 Finalize all users
+    for (const user of Object.values(room.users)) {
+      if (!user.finished) {
+        user.finished = true;
+        user.disqualified = true;
+        user.cheatFlags.push("DNF");
+        user.finishTime = null;
+        user.wpm = 0;
+        user.accuracy = 0;
+      }
+    }
+
+    // 🗄️ Persist once
+    await persistRaceResults(room);
+
+    io.to(room.roomId).emit("race-ended", {
+      reason,
+      results: room.users,
+    });
+
+    console.log(`[RACE] Room ${room.roomId} ended | reason=${reason}`);
+  }
+
+  function disqualifyUser(io, roomId, socketId, reason) {
     const room = rooms[roomId];
     if (!room) return;
 
@@ -285,15 +318,8 @@ export function registerRoomHandlers(io, socket) {
     );
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
-
     if (allFinished) {
-      room.status = "finished";
-
-      // 🗄️ Persist race results
-      await persistRaceResults(room);
-
-      io.to(roomId).emit("race-ended", { results: room.users });
-      console.log(`[RACE] Race finished in room ${roomId}`);
+      endRace(room, io, "all_finished");
     }
   }
 }

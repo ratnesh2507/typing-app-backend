@@ -20,7 +20,7 @@ router.get("/global", async (req, res) => {
     const { data, error } = await supabase
       .from("leaderboard_global")
       .select("*")
-      .order("wpm", { ascending: false })
+      .order("avg_wpm", { ascending: false })
       .range(from, to);
 
     if (error) throw error;
@@ -40,7 +40,7 @@ router.get("/global-best", async (req, res) => {
     const { data, error } = await supabase
       .from("leaderboard_global_best")
       .select("*")
-      .order("wpm", { ascending: false })
+      .order("best_wpm", { ascending: false })
       .range(from, to);
 
     if (error) throw error;
@@ -102,7 +102,7 @@ router.get("/weekly", async (req, res) => {
     const { data, error } = await supabase
       .from("leaderboard_weekly")
       .select("*")
-      .order("wpm", { ascending: false })
+      .order("avg_wpm", { ascending: false })
       .range(from, to);
 
     if (error) throw error;

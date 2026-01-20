@@ -6,6 +6,7 @@ import { config } from "dotenv";
 import { registerRoomHandlers } from "./socket/roomHandlers.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
 import userRoutes from "./routes/users.js";
+import raceRoutes from "./routes/races.js";
 
 config();
 const app = express();
@@ -19,6 +20,9 @@ app.use("/leaderboard", leaderboardRoutes);
 
 // Mount user routes
 app.use("/users", userRoutes);
+
+// Mount races routes
+app.use("/races", raceRoutes);
 
 const server = http.createServer(app);
 

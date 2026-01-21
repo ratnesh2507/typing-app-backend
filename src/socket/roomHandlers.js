@@ -19,6 +19,7 @@ rooms[roomId] = {
   text,
   users: {
     socketId: {
+      clerkId,
       username,
       progress,
       finished,
@@ -40,7 +41,7 @@ rooms[roomId] = {
 
 export function registerRoomHandlers(io, socket) {
   // ---------------- CREATE ROOM ----------------
-  socket.on("create-room", ({ username }) => {
+  socket.on("create-room", ({ clerkId, username }) => {
     let roomId;
     do {
       roomId = generateShortRoomId(8); // 8-character room ID
@@ -56,20 +57,20 @@ export function registerRoomHandlers(io, socket) {
       endTimeout: null,
     };
 
-    joinRoom(roomId, username);
+    joinRoom(roomId, clerkId, username);
     socket.emit("room-created", { roomId });
 
     console.log(`[ROOM] Room ${roomId} created by ${username}`);
   });
 
   // ---------------- JOIN ROOM ----------------
-  socket.on("join-room", ({ roomId, username }) => {
+  socket.on("join-room", ({ roomId, clerkId, username }) => {
     if (!rooms[roomId]) {
       socket.emit("error", "Room not found");
       return;
     }
 
-    joinRoom(roomId, username);
+    joinRoom(roomId, clerkId, username);
     console.log(`[ROOM] ${username} joined room ${roomId}`);
   });
 
@@ -159,7 +160,7 @@ export function registerRoomHandlers(io, socket) {
     user.correctChars = correctChars;
     user.progress = Math.min(
       Math.round((typedText.length / originalText.length) * 100),
-      100
+      100,
     );
     user.lastTypedLength = typedText.length;
     user.lastUpdateTime = now;
@@ -217,12 +218,13 @@ export function registerRoomHandlers(io, socket) {
   });
 
   // ---------------- HELPERS ----------------
-  function joinRoom(roomId, username) {
+  function joinRoom(roomId, clerkId, username) {
     socket.join(roomId);
     socketToRoom[socket.id] = roomId;
 
     rooms[roomId].users[socket.id] = {
-      username,
+      clerkId, // ✅ identity
+      username, // ✅ display
       progress: 0,
       finished: false,
       charsTyped: 0,
@@ -279,35 +281,25 @@ export function registerRoomHandlers(io, socket) {
 
     // 🧠 Finalize users
     for (const user of Object.values(room.users)) {
-      // Already finished via normal completion
-      if (user.finished && !user.disqualified) {
-        // finishTime already set in finishRace
-        continue;
-      }
+      if (user.finished && !user.disqualified) continue;
 
-      // Already disqualified (cheat, paste, etc.)
       if (user.disqualified) {
         user.finished = true;
         user.finishTime = null;
         continue;
       }
 
-      // User did NOT finish typing
       user.finished = true;
 
-      // ❌ True DNF: never typed or no valid speed
       if (user.charsTyped === 0 || user.wpm === 0) {
         user.disqualified = true;
         user.cheatFlags.push("DNF");
         user.finishTime = null;
         user.wpm = 0;
         user.accuracy = 0;
-      }
-      // ✅ Slow typer: typed but didn’t finish
-      else {
+      } else {
         user.disqualified = false;
-        user.finishTime = finishedAt; // store race end time
-        // keep wpm, accuracy, charsTyped
+        user.finishTime = finishedAt;
       }
     }
 
@@ -348,7 +340,7 @@ export function registerRoomHandlers(io, socket) {
     io.to(roomId).emit("user-disqualified", { socketId, reason });
 
     console.log(
-      `[CHEAT] ${user.username} disqualified in room ${roomId}: ${reason}`
+      `[CHEAT] ${user.username} disqualified in room ${roomId}: ${reason}`,
     );
 
     const allFinished = Object.values(room.users).every((u) => u.finished);
@@ -378,9 +370,10 @@ function getSampleText() {
 async function persistRaceResults(room) {
   if (!room.dbRaceId) return;
 
-  const participants = Object.entries(room.users).map(([socketId, user]) => ({
+  const participants = Object.values(room.users).map((user) => ({
     race_id: room.dbRaceId,
-    user_id: user.username, // TEMP (we’ll map Clerk IDs later)
+    clerk_id: user.clerkId, // ✅ stable identity
+    username: user.username, // ✅ display name
     wpm: user.wpm,
     accuracy: user.accuracy,
     chars_typed: user.charsTyped,

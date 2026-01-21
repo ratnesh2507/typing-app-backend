@@ -5,14 +5,21 @@ const router = express.Router();
 
 /* =====================================================
    User race history (Dashboard / PastResults)
-   GET /races/user/:clerkId?limit=20
+   GET /races/user/:identifier?limit=20
+
+   identifier can be:
+   - clerk_id (preferred)
+   - username (legacy fallback)
 ===================================================== */
-router.get("/user/:clerkId", async (req, res) => {
-  const { clerkId } = req.params;
+router.get("/user/:identifier", async (req, res) => {
+  const { identifier } = req.params;
   const limit = parseInt(req.query.limit) || 20;
 
   try {
-    const { data, error } = await supabase
+    /* ---------------------------------------------
+       1️⃣ Try clerk_id first (primary identity)
+    --------------------------------------------- */
+    let { data, error } = await supabase
       .from("race_participants")
       .select(
         `
@@ -25,11 +32,37 @@ router.get("/user/:clerkId", async (req, res) => {
         cheat_flags
       `,
       )
-      .eq("clerk_id", clerkId)
+      .eq("clerk_id", identifier)
       .order("finish_time", { ascending: false })
       .limit(limit);
 
     if (error) throw error;
+
+    /* ---------------------------------------------
+       2️⃣ Fallback to username (legacy data)
+    --------------------------------------------- */
+    if (!data || data.length === 0) {
+      const fallback = await supabase
+        .from("race_participants")
+        .select(
+          `
+          race_id,
+          wpm,
+          accuracy,
+          finished,
+          disqualified,
+          finish_time,
+          cheat_flags
+        `,
+        )
+        .eq("username", identifier)
+        .order("finish_time", { ascending: false })
+        .limit(limit);
+
+      if (fallback.error) throw fallback.error;
+
+      data = fallback.data;
+    }
 
     res.json(data);
   } catch (err) {
@@ -39,7 +72,7 @@ router.get("/user/:clerkId", async (req, res) => {
 });
 
 /* =====================================================
-   Single race details (PastRaceDetailsPage)
+   Single race details (unchanged)
    GET /races/:raceId/details
 ===================================================== */
 router.get("/:raceId/details", async (req, res) => {
@@ -77,10 +110,7 @@ router.get("/:raceId/details", async (req, res) => {
 
     if (participantsError) throw participantsError;
 
-    res.json({
-      race,
-      participants,
-    });
+    res.json({ race, participants });
   } catch (err) {
     console.error("[RACES] Race details error:", err);
     res.status(500).json({ error: err.message });

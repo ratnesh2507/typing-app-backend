@@ -6,7 +6,7 @@ A fun, retro-style multiplayer typing race game where players compete to type te
 
 ## Frontend Repo
 
-GitHub: [https://github.com/ratnesh2507/typing-app-frontend](https://github.com/ratnesh250/typing-app-frontend)
+GitHub: [https://github.com/ratnesh2507/typing-app-frontend](https://github.com/ratnesh2507/typing-app-frontend)
 
 ## 🚀 Features
 
@@ -96,12 +96,17 @@ npm run dev
 
 **Features Specific to Frontend:**
 
-- Dashboard with active rooms and user stats
+- Dashboard with active rooms, user stats, and a **Release Notes modal** for new updates
 - Lobby to join or create rooms
-- Race page with live typing stats
+- Race page with:
+  - Live typing stats
+  - Color-coded instructions: **Red = correct, Blue = incorrect**
 - Results page with final scores
 - How-To-Play modal with retro styling
 - Pixel cursor animations
+- Fully responsive for desktop and mobile
+- Auto-sync of user stats with backend (`users` table updates on login)
+- Leaderboards now track users by `clerk_id` for consistency
 
 **Run Locally:**
 
@@ -131,15 +136,27 @@ npm run build
 - Node.js + Express
 - Socket.IO server for real-time communication
 - Utilities for WPM and accuracy calculation
+- Supabase integration for database management
 
 **Features Specific to Backend:**
 
 - Create and join rooms
 - Random text assignment per room
 - Real-time race progress updates
-- Anti-cheat detection
+- Anti-cheat detection:
+  - Paste detection
+  - Max WPM limits
+  - Too-fast finishes
 - Emit race results to all connected users
+- Auto-insertion and update in `users` table whenever a new racer logs in
+- Leaderboards updated to track users by `clerk_id` instead of `user_id`
 - Handles disconnects and empty rooms
+- Provides endpoints for:
+  - Global leaderboard
+  - Per-race leaderboard
+  - Weekly leaderboard
+  - User stats
+- Versioned release notes support on frontend via API
 
 **Run Locally:**
 

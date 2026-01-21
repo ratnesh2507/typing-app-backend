@@ -10,7 +10,7 @@ function getRange(page = 1, limit = 10) {
   return [from, to];
 }
 
-// Global leaderboard (overall)
+// ---------------- GLOBAL LEADERBOARD ----------------
 router.get("/global", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -30,7 +30,7 @@ router.get("/global", async (req, res) => {
   }
 });
 
-// Global best performance per user
+// ---------------- GLOBAL BEST PERFORMANCE ----------------
 router.get("/global-best", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -50,7 +50,7 @@ router.get("/global-best", async (req, res) => {
   }
 });
 
-// Global average performance
+// ---------------- GLOBAL AVERAGE PERFORMANCE ----------------
 router.get("/global-avg", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -70,8 +70,8 @@ router.get("/global-avg", async (req, res) => {
   }
 });
 
-// All races (for dashboards, history, analytics)
-router.get("admin/race/all", async (req, res) => {
+// ---------------- ALL RACES ----------------
+router.get("/admin/race/all", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 100;
@@ -90,7 +90,7 @@ router.get("admin/race/all", async (req, res) => {
   }
 });
 
-// Per-race leaderboard
+// ---------------- PER-RACE LEADERBOARD ----------------
 router.get("/race/:raceId", async (req, res) => {
   const { raceId } = req.params;
   try {
@@ -112,7 +112,7 @@ router.get("/race/:raceId", async (req, res) => {
   }
 });
 
-// Weekly leaderboard
+// ---------------- WEEKLY LEADERBOARD ----------------
 router.get("/weekly", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;

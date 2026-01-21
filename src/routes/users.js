@@ -4,6 +4,36 @@ import { supabase } from "../lib/supabaseClient.js";
 const router = express.Router();
 
 /* =====================================================
+   Sync user on login
+   POST /users/sync
+===================================================== */
+router.post("/sync", async (req, res) => {
+  const { clerkId, username, email } = req.body;
+
+  if (!clerkId || !username) {
+    return res.status(400).json({ error: "Missing user data" });
+  }
+
+  try {
+    const { error } = await supabase.from("users").upsert(
+      {
+        id: clerkId,
+        username,
+        email: email ?? null,
+      },
+      { onConflict: "id" },
+    );
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[USERS] Sync error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* =====================================================
    User stats (Dashboard header, profile, analytics)
    GET /users/:clerkId/stats
 ===================================================== */
@@ -19,7 +49,7 @@ router.get("/:clerkId/stats", async (req, res) => {
         accuracy,
         finished,
         disqualified
-      `,
+        `,
       )
       .eq("clerk_id", clerkId);
 
